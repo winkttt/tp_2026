@@ -581,6 +581,26 @@ int main(int argc, char* argv[])
         }
       }
     }
+    else if (command == "ECHO")
+{
+  Polygon poly;
+
+  if (std::cin >> poly)
+  {
+    polygons.push_back(poly);
+
+    std::cout << polygons.size() << "\n";
+  }
+  else
+  {
+    std::cout << "<INVALID COMMAND>\n";
+
+    std::cin.clear();
+
+    std::string trash;
+    std::getline(std::cin, trash);
+  }
+}
     else if (command == "PERMS")
     {
       Polygon target;
