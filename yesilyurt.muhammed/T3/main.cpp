@@ -4,9 +4,10 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <set>
+#include <sstream>
 #include <string>
 #include <vector>
-#include <set>
 
 struct Point
 {
@@ -18,6 +19,16 @@ struct Polygon
 {
   std::vector< Point > points;
 };
+
+bool operator==(const Point& a, const Point& b)
+{
+  return a.x == b.x && a.y == b.y;
+}
+
+bool operator==(const Polygon& a, const Polygon& b)
+{
+  return a.points == b.points;
+}
 
 std::istream& operator>>(std::istream& in, Point& point)
 {
@@ -47,32 +58,46 @@ std::istream& operator>>(std::istream& in, Polygon& poly)
   }
 
   poly.points.clear();
-
   std::set< std::pair< int, int > > uniquePoints;
 
-for (std::size_t i = 0; i < count; ++i)
-{
-  Point p;
-  in >> p;
-
-  if (!in)
+  for (std::size_t i = 0; i < count; ++i)
   {
-    in.setstate(std::ios::failbit);
-    return in;
+    Point p;
+    in >> p;
+
+    if (!in)
+    {
+      in.setstate(std::ios::failbit);
+      return in;
+    }
+
+    if (uniquePoints.count({ p.x, p.y }) > 0)
+    {
+      in.setstate(std::ios::failbit);
+      return in;
+    }
+
+    uniquePoints.insert({ p.x, p.y });
+    poly.points.push_back(p);
   }
 
-  if (uniquePoints.count({ p.x, p.y }) > 0)
-  {
-    in.setstate(std::ios::failbit);
-    return in;
-  }
-
-  uniquePoints.insert({ p.x, p.y });
-
-  poly.points.push_back(p);
+  return in;
 }
 
-return in;
+bool readPolygon(std::istringstream& iss, Polygon& poly)
+{
+  if (!(iss >> poly))
+  {
+    return false;
+  }
+
+  std::string extra;
+  if (iss >> extra)
+  {
+    return false;
+  }
+
+  return true;
 }
 
 double getArea(const Polygon& poly)
@@ -87,6 +112,32 @@ double getArea(const Polygon& poly)
   }
 
   return std::abs(area) / 2.0;
+}
+
+bool arePerms(const Polygon& a, const Polygon& b)
+{
+  if (a.points.size() != b.points.size())
+  {
+    return false;
+  }
+
+  std::vector< std::pair< int, int > > first;
+  std::vector< std::pair< int, int > > second;
+
+  for (const Point& p : a.points)
+  {
+    first.push_back({ p.x, p.y });
+  }
+
+  for (const Point& p : b.points)
+  {
+    second.push_back({ p.x, p.y });
+  }
+
+  std::sort(first.begin(), first.end());
+  std::sort(second.begin(), second.end());
+
+  return first == second;
 }
 
 bool isInFrame(const std::vector< Polygon >& polygons, const Polygon& target)
@@ -122,30 +173,140 @@ bool isInFrame(const std::vector< Polygon >& polygons, const Polygon& target)
 
   return true;
 }
-bool arePerms(const Polygon& a, const Polygon& b)
+
+long long cross(const Point& a, const Point& b, const Point& c)
+{
+  return 1LL * (b.x - a.x) * (c.y - a.y) - 1LL * (b.y - a.y) * (c.x - a.x);
+}
+
+bool onSegment(const Point& a, const Point& b, const Point& p)
+{
+  return cross(a, b, p) == 0 &&
+         std::min(a.x, b.x) <= p.x && p.x <= std::max(a.x, b.x) &&
+         std::min(a.y, b.y) <= p.y && p.y <= std::max(a.y, b.y);
+}
+
+bool segmentsIntersect(const Point& a, const Point& b, const Point& c, const Point& d)
+{
+  long long c1 = cross(a, b, c);
+  long long c2 = cross(a, b, d);
+  long long c3 = cross(c, d, a);
+  long long c4 = cross(c, d, b);
+
+  if (c1 == 0 && onSegment(a, b, c)) return true;
+  if (c2 == 0 && onSegment(a, b, d)) return true;
+  if (c3 == 0 && onSegment(c, d, a)) return true;
+  if (c4 == 0 && onSegment(c, d, b)) return true;
+
+  return (c1 > 0) != (c2 > 0) && (c3 > 0) != (c4 > 0);
+}
+
+bool pointInsidePolygon(const Polygon& poly, const Point& p)
+{
+  bool inside = false;
+  std::size_t n = poly.points.size();
+
+  for (std::size_t i = 0, j = n - 1; i < n; j = i++)
+  {
+    const Point& a = poly.points[i];
+    const Point& b = poly.points[j];
+
+    if (onSegment(a, b, p))
+    {
+      return true;
+    }
+
+    bool intersect = ((a.y > p.y) != (b.y > p.y)) &&
+                     (p.x < (double)(b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x);
+
+    if (intersect)
+    {
+      inside = !inside;
+    }
+  }
+
+  return inside;
+}
+
+bool polygonsIntersect(const Polygon& a, const Polygon& b)
+{
+  for (std::size_t i = 0; i < a.points.size(); ++i)
+  {
+    Point a1 = a.points[i];
+    Point a2 = a.points[(i + 1) % a.points.size()];
+
+    for (std::size_t j = 0; j < b.points.size(); ++j)
+    {
+      Point b1 = b.points[j];
+      Point b2 = b.points[(j + 1) % b.points.size()];
+
+      if (segmentsIntersect(a1, a2, b1, b2))
+      {
+        return true;
+      }
+    }
+  }
+
+  return pointInsidePolygon(a, b.points[0]) || pointInsidePolygon(b, a.points[0]);
+}
+
+bool hasRightAngle(const Polygon& poly)
+{
+  for (std::size_t i = 0; i < poly.points.size(); ++i)
+  {
+    const Point& prev = poly.points[(i + poly.points.size() - 1) % poly.points.size()];
+    const Point& cur = poly.points[i];
+    const Point& next = poly.points[(i + 1) % poly.points.size()];
+
+    int x1 = prev.x - cur.x;
+    int y1 = prev.y - cur.y;
+    int x2 = next.x - cur.x;
+    int y2 = next.y - cur.y;
+
+    if (x1 * x2 + y1 * y2 == 0)
+    {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool isRect(const Polygon& poly)
+{
+  return poly.points.size() == 4 && hasRightAngle(poly);
+}
+
+std::vector< std::pair< int, int > > normalizedPoints(const Polygon& poly)
+{
+  int minX = poly.points[0].x;
+  int minY = poly.points[0].y;
+
+  for (const Point& p : poly.points)
+  {
+    minX = std::min(minX, p.x);
+    minY = std::min(minY, p.y);
+  }
+
+  std::vector< std::pair< int, int > > result;
+
+  for (const Point& p : poly.points)
+  {
+    result.push_back({ p.x - minX, p.y - minY });
+  }
+
+  std::sort(result.begin(), result.end());
+  return result;
+}
+
+bool sameByTranslation(const Polygon& a, const Polygon& b)
 {
   if (a.points.size() != b.points.size())
   {
     return false;
   }
 
-  std::vector< std::pair< int, int > > first;
-  std::vector< std::pair< int, int > > second;
-
-  for (const Point& p : a.points)
-  {
-    first.push_back({ p.x, p.y });
-  }
-
-  for (const Point& p : b.points)
-  {
-    second.push_back({ p.x, p.y });
-  }
-
-  std::sort(first.begin(), first.end());
-  std::sort(second.begin(), second.end());
-
-  return first == second;
+  return normalizedPoints(a) == normalizedPoints(b);
 }
 
 int main(int argc, char* argv[])
@@ -165,33 +326,45 @@ int main(int argc, char* argv[])
   }
 
   std::vector< Polygon > polygons;
+  std::string fileLine;
 
-  while (!file.eof())
+  while (std::getline(file, fileLine))
   {
+    std::istringstream iss(fileLine);
     Polygon poly;
 
-    if (file >> poly)
+    if (readPolygon(iss, poly))
     {
       polygons.push_back(poly);
-    }
-    else
-    {
-      file.clear();
-      std::string trash;
-      std::getline(file, trash);
     }
   }
 
   std::cout << std::fixed << std::setprecision(1);
 
-  std::string command;
+  std::string line;
 
-  while (std::cin >> command)
+  while (std::getline(std::cin, line))
   {
+    if (line.empty())
+    {
+      continue;
+    }
+
+    std::istringstream iss(line);
+    std::string command;
+    iss >> command;
+
     if (command == "AREA")
     {
       std::string option;
-      std::cin >> option;
+      iss >> option;
+
+      std::string extra;
+      if (option.empty() || (iss >> extra))
+      {
+        std::cout << "<INVALID COMMAND>\n";
+        continue;
+      }
 
       double result = 0.0;
 
@@ -236,9 +409,10 @@ int main(int argc, char* argv[])
       {
         try
         {
-          int vertices = std::stoi(option);
+          std::size_t pos = 0;
+          int vertices = std::stoi(option, &pos);
 
-          if (vertices < 3)
+          if (pos != option.size() || vertices < 3)
           {
             std::cout << "<INVALID COMMAND>\n";
             continue;
@@ -263,9 +437,10 @@ int main(int argc, char* argv[])
     else if (command == "MAX")
     {
       std::string option;
-      std::cin >> option;
+      iss >> option;
 
-      if (polygons.empty())
+      std::string extra;
+      if (option.empty() || (iss >> extra) || polygons.empty())
       {
         std::cout << "<INVALID COMMAND>\n";
         continue;
@@ -301,9 +476,10 @@ int main(int argc, char* argv[])
     else if (command == "MIN")
     {
       std::string option;
-      std::cin >> option;
+      iss >> option;
 
-      if (polygons.empty())
+      std::string extra;
+      if (option.empty() || (iss >> extra) || polygons.empty())
       {
         std::cout << "<INVALID COMMAND>\n";
         continue;
@@ -339,7 +515,14 @@ int main(int argc, char* argv[])
     else if (command == "COUNT")
     {
       std::string option;
-      std::cin >> option;
+      iss >> option;
+
+      std::string extra;
+      if (option.empty() || (iss >> extra))
+      {
+        std::cout << "<INVALID COMMAND>\n";
+        continue;
+      }
 
       int count = 0;
 
@@ -371,7 +554,14 @@ int main(int argc, char* argv[])
       {
         try
         {
-          int vertices = std::stoi(option);
+          std::size_t pos = 0;
+          int vertices = std::stoi(option, &pos);
+
+          if (pos != option.size() || vertices < 3)
+          {
+            std::cout << "<INVALID COMMAND>\n";
+            continue;
+          }
 
           for (const Polygon& poly : polygons)
           {
@@ -389,57 +579,232 @@ int main(int argc, char* argv[])
         }
       }
     }
+    else if (command == "PERMS")
+    {
+      Polygon target;
+
+      if (!readPolygon(iss, target))
+      {
+        std::cout << "<INVALID COMMAND>\n";
+        continue;
+      }
+
+      int count = 0;
+
+      for (const Polygon& poly : polygons)
+      {
+        if (arePerms(poly, target))
+        {
+          ++count;
+        }
+      }
+
+      std::cout << count << "\n";
+    }
     else if (command == "INFRAME")
     {
       Polygon target;
 
-      if (std::cin >> target)
+      if (!readPolygon(iss, target))
       {
-        if (isInFrame(polygons, target))
+        std::cout << "<INVALID COMMAND>\n";
+        continue;
+      }
+
+      std::cout << (isInFrame(polygons, target) ? "<TRUE>" : "<FALSE>") << "\n";
+    }
+    else if (command == "ECHO")
+    {
+      Polygon target;
+
+      if (!readPolygon(iss, target))
+      {
+        std::cout << "<INVALID COMMAND>\n";
+        continue;
+      }
+
+      std::vector< Polygon > result;
+      int added = 0;
+
+      for (const Polygon& poly : polygons)
+      {
+        result.push_back(poly);
+
+        if (poly == target)
         {
-          std::cout << "<TRUE>\n";
+          result.push_back(poly);
+          ++added;
+        }
+      }
+
+      polygons = result;
+      std::cout << added << "\n";
+    }
+    else if (command == "RMECHO")
+    {
+      Polygon target;
+
+      if (!readPolygon(iss, target))
+      {
+        std::cout << "<INVALID COMMAND>\n";
+        continue;
+      }
+
+      std::vector< Polygon > result;
+      int removed = 0;
+
+      for (std::size_t i = 0; i < polygons.size(); ++i)
+      {
+        if (i > 0 && polygons[i] == target && polygons[i - 1] == target)
+        {
+          ++removed;
         }
         else
         {
-          std::cout << "<FALSE>\n";
+          result.push_back(polygons[i]);
         }
       }
-      else
+
+      polygons = result;
+      std::cout << removed << "\n";
+    }
+    else if (command == "MAXSEQ")
+    {
+      Polygon target;
+
+      if (!readPolygon(iss, target))
       {
         std::cout << "<INVALID COMMAND>\n";
-        std::cin.clear();
-        std::string trash;
-        std::getline(std::cin, trash);
+        continue;
       }
-    }
-    else if (command == "PERMS")
-{
-  Polygon target;
 
-  if (std::cin >> target)
-  {
-    int count = 0;
+      int best = 0;
+      int cur = 0;
 
-    for (const Polygon& poly : polygons)
-    {
-      if (arePerms(poly, target))
+      for (const Polygon& poly : polygons)
       {
-        ++count;
+        if (poly == target)
+        {
+          ++cur;
+          best = std::max(best, cur);
+        }
+        else
+        {
+          cur = 0;
+        }
       }
+
+      std::cout << best << "\n";
     }
+    else if (command == "LESSAREA")
+    {
+      Polygon target;
 
-    std::cout << count << "\n";
-  }
-  else
-  {
-    std::cout << "<INVALID COMMAND>\n";
+      if (!readPolygon(iss, target))
+      {
+        std::cout << "<INVALID COMMAND>\n";
+        continue;
+      }
 
-    std::cin.clear();
+      double targetArea = getArea(target);
+      int count = 0;
 
-    std::string trash;
-    std::getline(std::cin, trash);
-  }
-}
+      for (const Polygon& poly : polygons)
+      {
+        if (getArea(poly) < targetArea)
+        {
+          ++count;
+        }
+      }
+
+      std::cout << count << "\n";
+    }
+    else if (command == "SAME")
+    {
+      Polygon target;
+
+      if (!readPolygon(iss, target))
+      {
+        std::cout << "<INVALID COMMAND>\n";
+        continue;
+      }
+
+      int count = 0;
+
+      for (const Polygon& poly : polygons)
+      {
+        if (sameByTranslation(poly, target))
+        {
+          ++count;
+        }
+      }
+
+      std::cout << count << "\n";
+    }
+    else if (command == "RECTS")
+    {
+      std::string extra;
+      if (iss >> extra)
+      {
+        std::cout << "<INVALID COMMAND>\n";
+        continue;
+      }
+
+      int count = 0;
+
+      for (const Polygon& poly : polygons)
+      {
+        if (isRect(poly))
+        {
+          ++count;
+        }
+      }
+
+      std::cout << count << "\n";
+    }
+    else if (command == "RIGHTSHAPES")
+    {
+      std::string extra;
+      if (iss >> extra)
+      {
+        std::cout << "<INVALID COMMAND>\n";
+        continue;
+      }
+
+      int count = 0;
+
+      for (const Polygon& poly : polygons)
+      {
+        if (hasRightAngle(poly))
+        {
+          ++count;
+        }
+      }
+
+      std::cout << count << "\n";
+    }
+    else if (command == "INTERSECTIONS")
+    {
+      Polygon target;
+
+      if (!readPolygon(iss, target))
+      {
+        std::cout << "<INVALID COMMAND>\n";
+        continue;
+      }
+
+      int count = 0;
+
+      for (const Polygon& poly : polygons)
+      {
+        if (polygonsIntersect(poly, target))
+        {
+          ++count;
+        }
+      }
+
+      std::cout << count << "\n";
+    }
     else
     {
       std::cout << "<INVALID COMMAND>\n";
