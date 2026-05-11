@@ -33,38 +33,29 @@ std::istream& operator>>(std::istream& in, DelimiterNoSkipIO&& dest) {
     return in;
 }
 
-static void skipToRecordEnd(std::istream& in) {
-    char c = '\0';
-    while (in.get(c)) {
-        if (c == ':') {
-            char next = '\0';
-            if (in.get(next)) {
-                if (next == ')') return;
-                in.putback(next);
-            }
-        }
-    }
-}
+std::istream& operator>>(std::istream& in, DataStruct& dest) {
+    std::istream::sentry sentry(in);
+    if (!sentry) return in;
 
-static bool readRecord(std::istream& in, DataStruct& input) {
+    DataStruct input;
     in >> DelimiterIO{ '(' } >> DelimiterIO{ ':' };
 
     for (int i = 0; i < 3; ++i) {
-        in >> std::ws;
         std::string key;
+        in >> std::ws;
         char c = '\0';
         while (in.get(c) && c != ' ' && c != ':' && c != '\n') {
             key += c;
         }
         if (!in || c != ' ') {
             in.setstate(std::ios::failbit);
-            return false;
+            break;
         }
 
         if (key == "key1") {
             in >> DelimiterIO{ '\'' };
             in.get(c);
-            if (!in) return false;
+            if (!in) break;
             input.key1 = c;
             in >> DelimiterIO{ '\'' } >> DelimiterIO{ ':' };
         }
@@ -81,25 +72,12 @@ static bool readRecord(std::istream& in, DataStruct& input) {
         }
         else {
             in.setstate(std::ios::failbit);
-            return false;
         }
     }
     in >> DelimiterIO{ ')' };
-    return static_cast<bool>(in);
-}
 
-std::istream& operator>>(std::istream& in, DataStruct& dest) {
-    while (in) {
-        std::istream::sentry sentry(in);
-        if (!sentry) break;
-
-        DataStruct input{};
-        if (readRecord(in, input)) {
-            dest = input;
-            return in;
-        }
-        in.clear();
-        skipToRecordEnd(in);
+    if (in) {
+        dest = input;
     }
     return in;
 }
