@@ -245,19 +245,16 @@ void cmdRightshapes(const std::vector<Polygon>& polygons)
 bool parsePolygonArg(std::istream& in, Polygon& poly)
 {
     std::size_t n = 0;
-    if (!(in >> n) || n < 3)
-        return false;
+    if (!(in >> n) || n < 3) return false;
 
-    std::vector<Point> pts(n);
-    std::generate_n(pts.begin(), n, [&]() -> Point
-        {
-            Point p{};
-            in >> p;
-            return p;
-        });
-
-    if (in.fail())
-        return false;
+    std::vector<Point> pts;
+    for (std::size_t i = 0; i < n; ++i) {
+        Point p;
+        if (!(in >> p)) return false;
+        pts.push_back(p);
+    }
+    std::string extra;
+    if (in >> extra) return false;
 
     poly.points = std::move(pts);
     return true;
